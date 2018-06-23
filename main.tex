@@ -277,10 +277,15 @@ In other words, a SCC may contain several nested cycles which connect to each ot
 \cite{tarjan1972} shows that the detection of SCCs can be done in $O (|V|+|E|)$ time, with $|V|$ the cardinality of the vertices and $|E|$ the cardinality of the edges.
 LCG is usually a sparse graph, as in biological systems, the components mostly interact with only a part of the system, hence the out-degree can be considered of $O (1)$ and the detection of SCCs\footnote{Python3 implementation at \url{https://github.com/alviano/python/blob/master/rewrite_aggregates/scc.py}} can be done in $O(|V|)$, \textit{i.e.} linear time.
 
-\begin{theorem}
-\label{th:break_cycle}
-Given cycle $x\to \circ \to \cdots \to \circ \to x$ with outside incoming edge $a\to \circ \to x$, deleting the predecessor of $x$ inside the cycle does not affect the reachability of $x$.
+\begin{theorem}\label{th:break_cycle}
+Given a cycle $x\to \circ \to \cdots \to \circ \to x$ in an SLCG, if there is at most one incoming edge to the cycle, the cycle can be removed.
 \end{theorem}
+\begin{proof}
+If there is no incoming edge, the target state $y$ must be in the cycle. 
+The edge $y.pred\to\circ\to y$ can be removed, because the reachability of $y.pred$ requires $y$, but $y$ is the target state, which is never reached before the other local states in the SLCG are reached.
+Thus the transition corresponding to this edge is never fired and the edge can be removed.
+Similarly, if there is an outside incoming edge $a\to \circ \to x$, $a$ must be the successor of target state $y$, $x.pred\to\circ\to x$ is also removable.
+\end{proof}
 \begin{example}
     \begin{figure}[ht]
         \centering
@@ -295,7 +300,7 @@ Given cycle $x\to \circ \to \cdots \to \circ \to x$ with outside incoming edge $
     Self-dependence appears: $x$ is reachable if $x$ is reachable.
     Thus edge $z\to \circ \to x$ is deleted (dashed line).
 \end{example}
-Unfortunately, not all cycles are removable. Example \ref{example:cycles} explains the issue.
+Unfortunately, not all cycles are removable via Theorem \ref{th:break_cycle}. Example \ref{example:cycles} explains the issue.
 \begin{example}\label{example:cycles}
     \begin{figure}[ht]
         \centering
@@ -303,10 +308,22 @@ Unfortunately, not all cycles are removable. Example \ref{example:cycles} explai
         \caption{$x,y,z$ all have external links, thus none of the links can be discarded}
         \label{cycle3}
     \end{figure}
-    If in one cycle, multiple state nodes are required by an external solution node, like in Figure. \ref{cycle3}, cycle $x\to \circ \to y \to \circ \to z\to \circ \to x$ is unbreakable, thus it is a unsolvable case. 
-    From experimental view, this issue never happens to real models to our knowledge but it is an incapability of our approach impeding completeness.
+%    If in one cycle, multiple state nodes are required by an external solution node, like in Figure. \ref{cycle3}, cycle $x\to \circ \to y \to \circ \to z\to \circ \to x$ is unbreakable, thus it is a unsolvable case. 
+%    From experimental view, this issue never happens to real models to our knowledge but it is an incapability of our approach impeding completeness.
 \end{example}
 
+\begin{theorem}\label{th:break_cycle2}
+Given a cycle, if it contains no \textbf{OR gate}% towards outside of cycle
+, all the local states in the cycles are unreachable.
+\end{theorem}
+
+\begin{proof}
+Suppose an arbitrary cycle $C=a_i\to \cdots b_j\to\cdots \to a_i$, with $\to$ an edge in the SLCG.
+Note that $r'(\alpha,a_i)\implies r'(\alpha,b_j)\implies r'(\alpha,b_j.next)\implies \cdots\implies r'(\alpha,a_i)$.
+According to the definition of $r'$, $r'(\alpha,a)=\mathbf{True}$ only if $\exists c_k\in C$ and $c_k\in \alpha$.
+If there exists such $c_k$, $C$ should not exist as the reasoning stops at $c_k$ and does not form a cycle, contradiction.
+$r'(\alpha,a_i)=r'(\alpha,b_j)=\cdots =\mathbf{False}$.
+\end{proof}
 \section{ASPReach Algorithm}
 %Our approach is divided into several subroutines. We introduce first the overview then the details of subroutines.
 %\subsection{Outline of the Whole Process}\label{sec:outline}
@@ -323,13 +340,17 @@ The algorithm proposed below tries to overcome those shortcomings by combining s
 \end{itemize}
 \begin{enumerate}
     \item Construct the LCG $l=LCG(AB,\alpha,\omega)$
-    \item Delete all cycles and prune useless edges from $l$
+    \item Try to remove all cycles and prune useless edges from $l$
     \item Try to prove unreachability of $\omega$ in $l$ using pseudo-reachability $r'(l,\omega)$ and return UNREACHABLE if $r'(l,\omega)=\textbf{False}$
     \item Try at most $k$ times
     \begin{itemize}
     \item $l'\gets l$
     %\item  Transform randomly each OR gate $O$ of $l'$ into simple gate
     \item Simplify each \textbf{OR gate} such that $l'$ is a LCG with only \textbf{AND gates}
+    \item If there remain cycles:
+        \begin{itemize}
+            \item Back to step (iv)
+        \end{itemize}
     \item Generate all trajectory that starts with $\alpha$ in $l'$ using ASP
     \begin{itemize}
         \item If a trajectory $t$ ending with $\omega$ is found, return REACHABLE
@@ -355,8 +376,9 @@ The ASP part searches thoroughly the result but does not traverse the whole stat
 \begin{algorithmic}[1]
 \State Input: LCG $l=(V_{\mathrm{state}},V_{\mathrm{solution}}, E)$, an integer $k$
 \State Output: reachability $r$ and a trajectory $t$
+\State Compute SCCs, classify them into $\mathrm{SCC1}(l)$ with at most 1 incoming edge and $\mathrm{SCC2}(l)$ otherwise
 \State \textcolor{gray}{// 1) Break all cycles and prune useless branches}\label{delete_cycle_begin}
-\For{each $(V'_{\mathrm{state}} \subseteq V_{\mathrm{state}},V'_{\mathrm{solution}} \subseteq V_{\mathrm{solution}}) \in \mathrm{SCC}(l)$}
+\For{each $(V'_{\mathrm{state}} \subseteq V_{\mathrm{state}},V'_{\mathrm{solution}} \subseteq V_{\mathrm{solution}}) \in \mathrm{SCC1}(l)$}
     \For{each $v \in V'_{\mathrm{state}}$}
     \If {$\exists(v,v')\in E, v' \in (V_{\mathrm{solution}} \setminus V'_{\mathrm{solution}})$}
         \State $E\gets E\backslash \{(v,v'')|v''\in V'_{\mathrm{solution}},(v,v'')\in E\}$
@@ -383,10 +405,10 @@ The ASP part searches thoroughly the result but does not traverse the whole stat
 
 \State \textcolor{gray}{// 4) main search loop} \label{main_loop_begin}
 \For{each $i$ in $1\ldots k$}
-    \State $l'=(V'_{\mathrm{state}}, V'_{\mathrm{solution}},E')\gets(V_{\mathrm{state}}, V_{\mathrm{solution}},E)$
+    \State $l'=(V'_{\mathrm{state}}, V'_{\mathrm{solution}},E')\gets(V_{\mathrm{state}}, V_{\mathrm{solution}},E)$ 
     \For{$v \in V'_{state}$} \textcolor{gray}{// Treat each OR gates}
         \State pick a random element $(v,v') \in E'$
-        \State $E'\gets E' \backslash  \{(v,v'') \in E'| v''\neq v'\}$
+        \State $E'\gets E' \backslash  \{(v,v'') \in E'| v''\neq v'\}$ with $\nexists i\in \mathrm{SCC2}(l)$ and $i\in E'$
     \EndFor
     \State $(r,t)\gets\mathrm{ASPsolve}(l')$
     \If{$r=\textbf{True}$}
