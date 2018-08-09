@@ -1,8 +1,10 @@
-\begin{tikzpicture}[aS,scale=0.7, every node/.style={scale=0.7}]  
+\begin{tikzpicture}[aS,scale=0.9, every node/.style={scale=0.9}]  
   	
   	\startl{a_1};
     \node[Asol,left of=a_1] (a_1s1){};
     \node[Aproc,left of=a_1s1] (e_1){$e_1$};
+    \node[right = 0.1cm of a_1s] {AND};
+    \node[above = 0.1cm of a_1] {OR};
     \path 
     (a_1s1) edge (e_1)
     (a_1) edge (a_1s1)
@@ -13,4 +15,4 @@
   	\specl{below}{a_1}{c_1};
 	\link{c_1}{d_1};
     \path (d_1s) edge (b_1);
-    \end{tikzpicture}
+\end{tikzpicture}
